@@ -2,41 +2,47 @@ package main
 
 import (
 	"fmt"
+	"image/color"
 	"math/rand/v2"
 	"sort"
 
 	"github.com/coreyog/diesel"
+	"github.com/coreyog/diesel/util"
 
-	"github.com/faiface/pixel"
-	"github.com/faiface/pixel/imdraw"
-	"github.com/faiface/pixel/pixelgl"
+	"github.com/gopxl/pixel/v2"
+	"github.com/gopxl/pixel/v2/backends/opengl"
+	"github.com/gopxl/pixel/v2/ext/imdraw"
 	"golang.org/x/image/colornames"
 )
 
 const (
-	SizeW   = 1024
-	SizeH   = 768
-	DotSize = 5
+	WindowWidth  = 1024
+	WindowHeight = 768
+	BufferScale  = 4
+	SizeW        = WindowWidth * BufferScale
+	SizeH        = WindowHeight * BufferScale
+	DotSize      = 20
+	LineWidth    = 2
 )
 
-var DotColor = colornames.Blue
-var LineLength = 200.0
+var DotColor = colornames.White
+var LineLength = 200.0 * BufferScale
 
 type Dot struct {
-	pos      pixel.Vec
-	velocity pixel.Vec
-	speed    float64
+	pos       pixel.Vec
+	direction pixel.Vec
+	speed     float64
 }
 
 func (d *Dot) update() {
-	d.pos = d.pos.Add(d.velocity.Scaled(d.speed))
-	if (d.pos.X < 0 && d.velocity.X < 0) || (d.pos.X > SizeW && d.velocity.X > 0) {
-		d.velocity.X *= -1
+	d.pos = d.pos.Add(d.direction.Scaled(d.speed / 15.0))
+	if (d.pos.X < 0 && d.direction.X < 0) || (d.pos.X > SizeW && d.direction.X > 0) {
+		d.direction.X *= -1
 		d.speed = rand.Float64()*3 + 2
 	}
 
-	if (d.pos.Y < 0 && d.velocity.Y < 0) || (d.pos.Y > SizeH && d.velocity.Y > 0) {
-		d.velocity.Y *= -1
+	if (d.pos.Y < 0 && d.direction.Y < 0) || (d.pos.Y > SizeH && d.direction.Y > 0) {
+		d.direction.Y *= -1
 		d.speed = rand.Float64()*3 + 2
 	}
 }
@@ -48,31 +54,37 @@ func (d *Dot) draw(target *imdraw.IMDraw) {
 }
 
 func main() {
-	pixelgl.Run(run)
+	opengl.Run(run)
 }
 
 func run() {
-	cfg := pixelgl.WindowConfig{
-		Title:  "Dots and Lines",
-		Bounds: pixel.R(0, 0, SizeW, SizeH),
-		VSync:  true,
+	cfg := opengl.WindowConfig{
+		Title:       "Dots and Lines",
+		Bounds:      pixel.R(0, 0, WindowWidth, WindowHeight),
+		VSync:       true,
+		SamplesMSAA: 0,
 	}
 
-	win, err := pixelgl.NewWindow(cfg)
+	win, err := opengl.NewWindow(cfg)
 	if err != nil {
 		panic(err)
 	}
 
 	win.SetSmooth(true)
 
+	buffer := opengl.NewCanvas(pixel.R(0, 0, SizeW, SizeH))
+	buffer.SetSmooth(true)
+
+	mapper := util.BuildMapper(buffer.Bounds(), win.Bounds())
+
 	dt := diesel.NewDeltaTimer(0, 60)
 
 	dots := make([]*Dot, 0, 75)
 	for range cap(dots) {
 		d := &Dot{
-			pos:      pixel.V(float64(rand.N(1024)), float64(rand.N(768))),
-			velocity: pixel.V(float64(rand.N(10)-5), float64(rand.N(10)-5)).Unit(),
-			speed:    rand.Float64()*3 + 2,
+			pos:       pixel.V(float64(rand.N(SizeW)), float64(rand.N(SizeH))),
+			direction: pixel.V(float64(rand.N(10)-5), float64(rand.N(10)-5)).Unit(),
+			speed:     rand.Float64()*3 + 2,
 		}
 		dots = append(dots, d)
 	}
@@ -84,41 +96,41 @@ func run() {
 		win.SetTitle(fmt.Sprintf("Dots and Lines | FPS: %.1f", dt.FPS()))
 
 		// escape
-		if win.JustPressed(pixelgl.KeyEscape) {
+		if win.JustPressed(pixel.KeyEscape) {
 			win.SetClosed(true)
 		}
 
 		// " "
-		if win.Pressed(pixelgl.KeySpace) {
+		if win.Pressed(pixel.KeySpace) {
 			d := &Dot{
-				pos:      pixel.V(float64(rand.N(1024)), float64(rand.N(768))),
-				velocity: pixel.V(float64(rand.N(10)-5), float64(rand.N(10)-5)).Unit(),
-				speed:    rand.Float64()*3 + 2,
+				pos:       pixel.V(float64(rand.N(SizeW)), float64(rand.N(SizeH))),
+				direction: pixel.V(float64(rand.N(10)-5), float64(rand.N(10)-5)).Unit(),
+				speed:     rand.Float64()*3 + 2,
 			}
 			dots = append(dots, d)
 			fmt.Printf("Dots: %d\n", len(dots))
 		}
 
 		// "\b"
-		if win.Pressed(pixelgl.KeyBackspace) && len(dots) > 1 {
+		if win.Pressed(pixel.KeyBackspace) && len(dots) > 1 {
 			dots = dots[:len(dots)-1]
 			fmt.Printf("Dots: %d\n", len(dots))
 		}
 
 		// "+", but it's actually =
-		if win.Pressed(pixelgl.KeyEqual) {
+		if win.Pressed(pixel.KeyEqual) {
 			LineLength++
 			fmt.Printf("Length: %.1f\n", LineLength)
 		}
 
 		// -
-		if win.Pressed(pixelgl.KeyMinus) && LineLength > 0 {
+		if win.Pressed(pixel.KeyMinus) && LineLength > 0 {
 			LineLength--
 			fmt.Printf("Length: %.1f\n", LineLength)
 		}
 
 		// stats
-		if win.JustPressed(pixelgl.KeyS) {
+		if win.JustPressed(pixel.KeyS) {
 			fmt.Printf("Dots: %d\n", len(dots))
 			fmt.Printf("Length: %.1f\n", LineLength)
 		}
@@ -134,9 +146,12 @@ func run() {
 			d.draw(frame)
 		}
 
-		frame.Draw(win)
+		frame.Draw(buffer)
+
+		buffer.Draw(win, mapper)
 
 		win.Update()
+		buffer.Clear(color.Black)
 	}
 }
 
@@ -167,6 +182,6 @@ func drawLines(frame *imdraw.IMDraw, dots []*Dot) {
 		frame.Color = DotColor
 		frame.Intensity = l.alpha
 		frame.Push(l.d1.pos, l.d2.pos)
-		frame.Line(1)
+		frame.Line(LineWidth)
 	}
 }
